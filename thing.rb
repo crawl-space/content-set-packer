@@ -12,12 +12,52 @@ end
 
 # usage: ./content_from_pem.rb 5286016419950084643.pem
 
+class Children
+
+   attr_accessor :children
+
+   def initialize()
+     @children = []
+   end
+
+   def each()
+     @children.each do |child|
+       yield child
+     end
+   end
+
+   def collect()
+     @children.each do |child|
+       yield child
+     end
+   end
+
+  def length()
+    @children.length
+  end
+  def [](i)
+    @children[i]
+  end
+
+  def []=(i, val)
+    @children[i] = val
+  end
+
+   def <<(other)
+     @children << other
+   end
+
+   def join(str)
+     @children.join(str)
+   end
+end
+
 class Node
   attr_accessor :path, :children, :de_duped, :written
 
   def initialize(path)
     @path = path
-    @children = []
+    @children = Children.new
     @sig = nil
     @de_duped = false
     @written = false
@@ -42,6 +82,8 @@ class Node
   end
 
   def signature()
+    @sig = @path + "[" +
+        @children.collect { |x| x.signature }.join("|") + "]"
     if @sig.nil?
       @sig = @path + "[" +
           @children.collect { |x| x.signature }.join("|") + "]"
@@ -95,6 +137,7 @@ def compress_prefix(parent)
     compress_prefix(child)
   end
   if parent.children.length == 1
+    puts "compressing #{parent.path} and #{parent.children[0].path}"
     parent.path += "/" + parent.children[0].path
     parent.children = parent.children[0].children
   end
@@ -104,7 +147,7 @@ end
 # given a tree of nodes, try and find branches that match the children of node.
 # if found, replace those branches with node's children
 def de_dupe(tree, node)
-  for i in 0..tree.children.count - 1
+  for i in 0..tree.children.length - 1
     if tree.children[i] == node
       # nothing
     elsif node.signature == tree.children[i].signature
@@ -125,10 +168,10 @@ end
 
 def binary_write(file, parent)
   file.write(parent.path)
-  file.write("\0AAA")
+  file.write("\0\0\0\0")
   parent.children.each do |child|
 #    file.write(child.path)
-    file.write("AAA")
+    file.write("\0\0\0")
   end
   parent.children.each do |child|
     unless child.written
@@ -179,9 +222,9 @@ if $0 == __FILE__
         parent = mk_hash(chunks, parent)
       end
       # prime the signatures
-      parent.signature
       de_dupe_driver(parent, parent.flatten)
       parent = compress_prefix(parent)
+      de_dupe_driver(parent, parent.flatten)
       binary_write(binary, parent)
       file.write(parent.to_json)
     end
