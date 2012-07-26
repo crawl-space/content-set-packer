@@ -49,6 +49,9 @@ def compress_prefix(hash)
   return hash
 end
 
+def binary_write(file, hash)
+end
+
 if $0 == __FILE__
   if ARGV.length == 0
     cert_data = STDIN.read
@@ -57,7 +60,7 @@ if $0 == __FILE__
     content_hex = cert.extensions.detect {|ext| ext.oid == 'subjectKeyIdentifier' }
     abort('ERROR: no X509v3 extension for subjectKeyIdentifier') unless content_hex
   
-    puts akamai_hex_to_content_set(content_hex.value)
+    puts akamai_hex_to_content_set(content_hex.value).join("|")
   end
 
   ARGV.each do |arg|
@@ -87,7 +90,8 @@ if $0 == __FILE__
         h = mk_hash(chunks, h)
       end
       h = compress_prefix(h)
-      file.write(h.to_json)
+      binary_write(file, h)
+#      file.write(h.to_json)
     end
     puts "Wrote:\n [%d] %s\n [%d] %s" % [File.size(txt_name), txt_name, File.size(json_name), json_name]
 
