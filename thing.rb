@@ -13,11 +13,14 @@ end
 # usage: ./content_from_pem.rb 5286016419950084643.pem
 
 class Node
-  attr_accessor :path, :children
+  attr_accessor :path, :children, :de_duped, :written
 
   def initialize(path)
     @path = path
     @children = []
+    @sig = nil
+    @de_duped = false
+    @written = false
   end
 
   def has_key?(key)
@@ -36,6 +39,22 @@ class Node
       end
     end
     return nil
+  end
+
+  def signature()
+    if @sig.nil?
+      @sig = @path + "[" +
+          @children.collect { |x| x.signature }.join("|") + "]"
+    end
+    @sig
+  end
+
+  def flatten()
+    flat = [self]
+    @children.each do |child|
+      flat += child.flatten
+    end
+    flat
   end
 
   def to_json(*a)
@@ -82,7 +101,43 @@ def compress_prefix(parent)
   return parent
 end
 
-def binary_write(file, hash)
+# given a tree of nodes, try and find branches that match the children of node.
+# if found, replace those branches with node's children
+def de_dupe(tree, node)
+  for i in 0..tree.children.count - 1
+    if tree.children[i] == node
+      # nothing
+    elsif node.signature == tree.children[i].signature
+      tree.children[i].de_duped = true
+      tree.children[i] = node
+      puts "Found dupe! " + node.signature
+    else
+        de_dupe(tree.children[i], node)
+    end
+  end
+end
+
+def de_dupe_driver(tree, nodes)
+  nodes.each do |node|
+    de_dupe(tree, node) unless node.de_duped
+  end
+end
+
+def binary_write(file, parent)
+  file.write(parent.path)
+  file.write("\0AAA")
+  parent.children.each do |child|
+#    file.write(child.path)
+    file.write("AAA")
+  end
+  parent.children.each do |child|
+    unless child.written
+      binary_write(file, child)
+      child.written = true
+    else
+      puts "not writing #{child.path}"
+    end
+  end
 end
 
 if $0 == __FILE__
@@ -107,6 +162,7 @@ if $0 == __FILE__
     ext = File.extname(arg)
     txt_name = File.basename(arg, ext) + ".txt"
     json_name = File.basename(arg, ext) + ".json"
+    binary = File.open(File.basename(arg, ext) + ".bin", "w")
     
     sets = akamai_hex_to_content_set(content_hex.value)
 
@@ -122,8 +178,11 @@ if $0 == __FILE__
         chunks = line.split("/")
         parent = mk_hash(chunks, parent)
       end
-      h = compress_prefix(parent)
-#      binary_write(file, parent)
+      # prime the signatures
+      parent.signature
+      de_dupe_driver(parent, parent.flatten)
+      parent = compress_prefix(parent)
+      binary_write(binary, parent)
       file.write(parent.to_json)
     end
     puts "Wrote:\n [%d] %s\n [%d] %s" % [File.size(txt_name), txt_name, File.size(json_name), json_name]
