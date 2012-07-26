@@ -12,6 +12,39 @@ end
 
 # usage: ./content_from_pem.rb 5286016419950084643.pem
 
+class Node
+  attr_accessor :path, :children
+
+  def initialize(path)
+    @path = path
+    @children = []
+  end
+
+  def has_key?(key)
+    @children.each do |child|
+      if child.path == key
+        return true
+      end
+    end
+    return false
+  end
+
+  def get_child(name)
+    @children.each do |child|
+      if child.path == name
+        return child
+      end
+    end
+    return nil
+  end
+
+  def to_json(*a)
+      {
+          @path => @children
+      }.to_json(*a)
+  end
+end
+
 def akamai_hex_to_content_set(akamai_hex)
   gzipped_hex = akamai_hex.gsub(":","").chomp("00")
   gzipped_data = [gzipped_hex].pack("H*")
@@ -25,28 +58,28 @@ def akamai_hex_to_content_set(akamai_hex)
   return content_sets
 end
 
-def mk_hash(sgmts, hash = nil)
-  hash = {} unless hash.kind_of? Hash
+def mk_hash(sgmts,  parent)
   segment = sgmts.shift
-  return hash if segment.nil?
-  unless hash.has_key?(segment)
-    hash[segment] = mk_hash(sgmts, {})
+  return parent if segment.nil?
+  unless parent.has_key?(segment)
+    parent.children << mk_hash(sgmts, Node.new(segment))
   else
-    hash[segment].update(mk_hash(sgmts, hash[segment]))
+    mk_hash(sgmts, parent.get_child(segment))
+#  else
+#    hash[segment].update(mk_hash(sgmts, hash[segment]))
   end
-  return hash
+  return parent
 end
 
-def compress_prefix(hash)
-  hash.keys.each do |key|
-    hash[key] = compress_prefix(hash[key])
-    if hash[key].length == 1
-      new_key = key + "/" + hash[key].keys[0]
-      hash[new_key] = hash[key].values[0]
-      hash.delete(key)
-    end
+def compress_prefix(parent)
+  parent.children.each do |child|
+    compress_prefix(child)
   end
-  return hash
+  if parent.children.length == 1
+    parent.path += "/" + parent.children[0].path
+    parent.children = parent.children[0].children
+  end
+  return parent
 end
 
 def binary_write(file, hash)
@@ -81,17 +114,17 @@ if $0 == __FILE__
       file.write(sets)
     end
     File.open(json_name, "w+") do |file|
-      h = {}
+      parent = Node.new("")
       sets.each do |set|
         line = set.start_with?("/") ? set[1..-1] : set
       
         # => ["content", "beta", "rhel", "server", "6", "$releasever", "$basearch", "scalablefilesystem", "debug"]
         chunks = line.split("/")
-        h = mk_hash(chunks, h)
+        parent = mk_hash(chunks, parent)
       end
-      h = compress_prefix(h)
-      binary_write(file, h)
-#      file.write(h.to_json)
+      h = compress_prefix(parent)
+#      binary_write(file, parent)
+      file.write(parent.to_json)
     end
     puts "Wrote:\n [%d] %s\n [%d] %s" % [File.size(txt_name), txt_name, File.size(json_name), json_name]
 
