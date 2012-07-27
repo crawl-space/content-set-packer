@@ -18,13 +18,13 @@ class BitWriter
 
   def initialize(stream)
     @stream = stream
-    @byte = '\0'
+    @byte = 0x00
     @count = 8
   end
 
   def write(char)
     if char == '1'
-      @byte[0] | 1 << @count
+      @byte |= 1 << @count
     end
     @count -= 1
     if @count == -1
@@ -32,10 +32,16 @@ class BitWriter
     end
   end
 
+  def write_bits(string)
+    string.each_char do |c|
+      self.write(c)
+    end
+  end
+
   def pad()
     @count = 8
-    @stream.write(@byte)
-    @byte = '\0'
+    @stream.write(Array(@byte).pack('C'))
+    @byte = 0x00
   end
 end
 
@@ -209,7 +215,7 @@ def ran_char(val)
   return val
 end
 
-def binary_write(file, parent, strings)
+def binary_write(file, parent, string_huff, node_huff)
 #  file.write(parent.path)
 #  file.write("\0")
   #offset to child node indicies
@@ -230,15 +236,16 @@ def binary_write(file, parent, strings)
 #    file.write(child.path)
 #    file.write("\0")
     # index of path string
-    file.write(strings[child.path][1])
+    file.write_bits(string_huff.encode(child.path))
     # offset to node
     # index of node, that is.
-    file.write(child.offset)
+    file.write_bits(node_huff.encode(child))
   end
   # reserve null byte for end of node info
-  file.write("\0")
+  # 3 0s are reserved in our name huffman table to denote end of node
+  file.write_bits("000")
   parent.children.each do |child|
-      binary_write(file, child, strings)
+      binary_write(file, child, string_huff, node_huff)
       child.children.written = true
   end
 end
@@ -246,11 +253,12 @@ end
 def write_strings(file, strings)
   string_io = StringIO.new()
   strings.each_key do |string|
+    puts "STRING: " + string
     string_io.write(string)
     string_io.write("\0")
   end
   zlib = Zlib::Deflate.new(Zlib::BEST_COMPRESSION, 15, Zlib::MAX_MEM_LEVEL)
-  file.write zlib.deflate(string_io.to_s, Zlib::FINISH)
+  file.write zlib.deflate(string_io.string, Zlib::FINISH)
 end
 
 def collect_strings(parent)
@@ -262,22 +270,15 @@ def collect_strings(parent)
   strings
 end
 
-def build_huffman_for_strings(parent, strings)
+def build_huffman_for_strings(parent)
     nodes = parent.flatten.uniq
     paths = nodes.collect {|node| node.path}
     table = HuffmanEncoding.new paths
+end
 
-
-    paths.uniq.each do |string|
-      puts table.encode(string).to_s + " " + string
-    end
-
+def build_huffman_for_nodes(parent)
     nodes = parent.flatten
     table = HuffmanEncoding.new nodes
-
-    parent.flatten.uniq do |node|
-      puts table.encode(node).to_s
-    end
 end
 
 if $0 == __FILE__
@@ -323,11 +324,14 @@ if $0 == __FILE__
       de_dupe_driver(parent)
       parent = compress_prefix(parent)
 
-      strings = collect_strings(parent)
-      build_huffman(parent, strings)
+      string_huff = build_huffman_for_strings(parent)
+      node_huff = build_huffman_for_nodes(parent)
       
+      strings = collect_strings(parent)
       write_strings(binary, strings)
-      binary_write(binary, parent, strings)
+      bit_file = BitWriter.new binary
+      binary_write(bit_file, parent, string_huff, node_huff)
+      bit_file.pad
       file.write(parent.to_json)
 
     end
