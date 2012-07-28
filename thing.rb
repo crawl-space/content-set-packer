@@ -45,109 +45,47 @@ class BitWriter
   end
 end
 
-class Children
-
-   attr_accessor :children, :written
-
-   def initialize()
-     @children = []
-     @written = false
-   end
-
-   def each()
-     @children.each do |child|
-       yield child
-     end
-   end
-
-   def collect()
-     @children.each do |child|
-       yield child
-     end
-   end
-
-  def length()
-    @children.length
-  end
-  def [](i)
-    @children[i]
-  end
-
-  def []=(i, val)
-    @children[i] = val
-  end
-
-   def <<(other)
-     @children << other
-   end
-
-   def join(str)
-     @children.join(str)
-   end
-
-   def signature
-      @children.sort! do |a, b|
-        a.path <=> b.path
-      end
-      "[" + @children.collect { |x| x.path + x.signature }.join("|") + "]"
-   end
-end
-
 class Node
-  attr_accessor :path, :children, :de_duped, :offset
+  attr_accessor :children, :de_duped, :offset, :written
 
   def initialize(path)
-    @path = path
-    @children = Children.new
-    @sig = nil
+    @children = {}
     @de_duped = false
     @offset = ran_char(2)
   end
 
   def has_key?(key)
-    @children.each do |child|
-      if child.path == key
-        return true
-      end
-    end
-    return false
+    @children.has_key? key
   end
 
   def get_child(name)
-    @children.each do |child|
-      if child.path == name
-        return child
-      end
-    end
-    return nil
+    @children[name]
   end
 
   def de_duped=(val)
     @de_duped = val
-    @children.each do |child|
+    @children.each do |key, child|
       child.de_duped = true
     end
   end
 
-  def signature()
-    if @sig.nil?
-      @sig = @children.signature
-    end
-    @sig
-  end
+  def signature
+      sorted = @children.keys.sort do |a, b|
+        a <=> b
+      end
+      "[" + sorted.collect { |key| key + @children[key].signature }.join("|") + "]"
+   end
 
   def flatten()
     flat = [self]
-    @children.each do |child|
+    @children.each do |key, child|
       flat += child.flatten
     end
     flat
   end
 
   def to_json(*a)
-      {
-          @path => @children
-      }.to_json(*a)
+    @children.to_json(*a)
   end
 end
 
@@ -168,7 +106,7 @@ def mk_hash(sgmts,  parent)
   segment = sgmts.shift
   return parent if segment.nil?
   unless parent.has_key?(segment)
-    parent.children << mk_hash(sgmts, Node.new(segment))
+    parent.children[segment] = mk_hash(sgmts, Node.new(segment))
   else
     mk_hash(sgmts, parent.get_child(segment))
 #  else
@@ -178,35 +116,51 @@ def mk_hash(sgmts,  parent)
 end
 
 def compress_prefix(parent)
-  parent.children.each do |child|
+  parent.children.keys.each do |key|
+    child = parent.children[key]
     compress_prefix(child)
-  end
-  if parent.children.length == 1
-    puts "compressing #{parent.path} and #{parent.children[0].path}"
-    parent.path += "/" + parent.children[0].path
-    parent.children = parent.children[0].children
+    if child.children.length == 1
+        puts "compressing #{key} and #{child.children.keys[0]}"
+        new_key = key + "/" + child.children.keys[0]
+        parent.children[new_key] =  child
+        child.children = child.children.values[0].children
+        parent.children.delete(key)
+    end
   end
   return parent
+end
+
+def replace(tree, old, new)
+  tree.flatten.uniq.each do |node|
+    node.children.keys.each do |key|
+      if node.children[key] == old
+        node.children[key] = new
+      end
+    end
+  end
 end
 
 # given a tree of nodes, try and find branches that match the children of node.
 # if found, replace those branches with node's children
 def de_dupe(tree, node)
-  tree.flatten.each do |sub_tree|
-    if sub_tree.children == node.children
+  tree.flatten.uniq.each do |sub_tree|
+    if sub_tree == node
       # nothing
     elsif node.signature == sub_tree.signature
       sub_tree.de_duped = true
-      sub_tree.children = node.children
+      replace(tree, sub_tree, node)
       puts "Found dupe! " + node.signature unless node.signature == "[]"
     end
   end
 end
 
 def de_dupe_driver(tree)
+  before = tree.flatten.length
   tree.flatten.each do |node|
     de_dupe(tree, node) unless node.de_duped
   end
+
+  puts "Total nodes Before: #{before} After: #{tree.flatten.uniq.length}"
 end
 
 # simulate random file offsets
@@ -221,22 +175,16 @@ def binary_write(file, parent, string_huff, node_huff)
   #offset to child node indicies
    # not needed, can just go write to children indicies
   #file.write(ran_char)
-  if parent.children.written
-    puts "not writing children of #{parent.path}"
+  if parent.written
     return
   end
 
-  # number of paths
-  length = parent.children.length.to_s
-#  path_count = (3 - length.length).times.collect { |i| "0" }.join + length
-#  file.write(path_count)
-#  puts "CHILD COUNT: " + parent.children.length.to_s
-  parent.children.each do |child|
+  parent.children.each do |path, child|
 #    puts "PATH: " + child.path
 #    file.write(child.path)
 #    file.write("\0")
     # index of path string
-    file.write_bits(string_huff.encode(child.path))
+    file.write_bits(string_huff.encode(path))
     # offset to node
     # index of node, that is.
     file.write_bits(node_huff.encode(child))
@@ -244,16 +192,15 @@ def binary_write(file, parent, string_huff, node_huff)
   # reserve null byte for end of node info
   # 3 0s are reserved in our name huffman table to denote end of node
   file.write_bits("000")
-  parent.children.each do |child|
+  parent.children.each do |path, child|
       binary_write(file, child, string_huff, node_huff)
-      child.children.written = true
+      child.written = true
   end
 end
 
 def write_strings(file, strings)
   string_io = StringIO.new()
   strings.each_key do |string|
-    puts "STRING: " + string
     string_io.write(string)
     string_io.write("\0")
   end
@@ -263,22 +210,38 @@ end
 
 def collect_strings(parent)
   strings = {}
-  parent.flatten.each do |node|
-    strings[node.path] = [0, ran_char(1)] unless strings.has_key? node.path
-    strings[node.path][0] += 1
+  parent.flatten.uniq.each do |node|
+    node.children.each_key do |key|
+      strings[key] ||= 0
+      strings[key] += 1
+    end
   end
   strings
 end
 
 def build_huffman_for_strings(parent)
-    nodes = parent.flatten.uniq
-    paths = nodes.collect {|node| node.path}
-    table = HuffmanEncoding.new paths
+    paths = []
+    parent.flatten.uniq.each do |node|
+      node.children.each_key {|key| paths << key}
+    end
+    HuffmanEncoding.new paths
 end
 
 def build_huffman_for_nodes(parent)
-    nodes = parent.flatten
-    table = HuffmanEncoding.new nodes
+    nodes = parent.flatten.uniq
+    refs = {}
+    nodes.each do |node|
+      node.children.each do |key, node|
+        refs[node] ||= 0
+        refs[node] += 1
+      end
+    end
+    refs[parent] = 1
+    expanded = []
+    refs.each do |node, freq|
+      freq.times {expanded << node}
+    end
+    table = HuffmanEncoding.new expanded
 end
 
 if $0 == __FILE__
@@ -322,7 +285,7 @@ if $0 == __FILE__
       # prime the signatures
       parent.signature
       de_dupe_driver(parent)
-      parent = compress_prefix(parent)
+#      parent = compress_prefix(parent)
 
       string_huff = build_huffman_for_strings(parent)
       node_huff = build_huffman_for_nodes(parent)
