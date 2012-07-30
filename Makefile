@@ -1,4 +1,10 @@
-CFLAGS=`pkg-config --libs --cflags zlib`
+CFLAGS += `pkg-config --libs --cflags zlib`
+CFLAGS += -Wall
+CC = gcc
 
-unpack: unpack.c
-	gcc -Wall $(CFLAGS) -o unpack unpack.c
+all: unpack
+
+
+%: %.c
+	$(CC) $(CFLAGS) -o $@ $<
+
