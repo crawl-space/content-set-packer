@@ -298,7 +298,13 @@ if $0 == __FILE__
       file.write(parent.to_json)
 
     end
-    puts "Wrote:\n [%d] %s\n [%d] %s" % [File.size(txt_name), txt_name, File.size(json_name), json_name]
+
+    binary.flush # the bits need to be written before showing the size of the file
+
+    puts "Wrote:"
+    [txt_name, json_name, binary.path].each do |filename|
+      puts " [%d] %s" % [File.size(filename), filename]
+    end
 
   end
 end
