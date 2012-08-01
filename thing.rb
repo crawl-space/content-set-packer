@@ -52,6 +52,7 @@ class Node
     @children = {}
     @de_duped = false
     @offset = ran_char(2)
+    @sig = nil
   end
 
   def has_key?(key)
@@ -70,10 +71,12 @@ class Node
   end
 
   def signature
+      return @sig unless @sig.nil?
       sorted = @children.keys.sort do |a, b|
         a <=> b
       end
-      "[" + sorted.collect { |key| key + @children[key].signature }.join("|") + "]"
+      @sig = "[" + sorted.collect { |key| key + @children[key].signature }.join("|") + "]"
+      return @sig
    end
 
   def flatten()
@@ -130,8 +133,10 @@ def compress_prefix(parent)
   return parent
 end
 
-def replace(tree, old, new)
-  tree.flatten.uniq.each do |node|
+def replace(list, old, new)
+  puts "replace"
+  length = list.length
+  list.each do |node|
     node.children.keys.each do |key|
       if node.children[key] == old
         node.children[key] = new
@@ -140,24 +145,34 @@ def replace(tree, old, new)
   end
 end
 
-# given a tree of nodes, try and find branches that match the children of node.
+# given a list of nodes, try and find branches that match the children of node.
 # if found, replace those branches with node's children
-def de_dupe(tree, node)
-  tree.flatten.uniq.each do |sub_tree|
-    if sub_tree == node
+def de_dupe(list, node)
+  list.each do |sub_tree|
+    if sub_tree == node or sub_tree.de_duped
+      next
+    end
       # nothing
-    elsif node.signature == sub_tree.signature
-      sub_tree.de_duped = true
-      replace(tree, sub_tree, node)
-      puts "Found dupe! " + node.signature unless node.signature == "[]"
+    sub_tree.children.keys.each do |key|
+      next if sub_tree.children[key] == node
+      next if sub_tree.children[key].de_duped
+      if sub_tree.children[key].signature == node.signature
+        sub_tree.children[key].de_duped = true
+        sub_tree.children[key] = node
+        puts "Found dupe! " + node.signature unless node.signature == "[]"
+      end
     end
   end
 end
 
 def de_dupe_driver(tree)
-  before = tree.flatten.length
-  tree.flatten.each do |node|
-    de_dupe(tree, node) unless node.de_duped
+  list = tree.flatten
+  before = list.length
+  i = 1
+  list.each do |node|
+    puts "de dupe #{i} / #{before}"
+    i += 1
+    de_dupe(list, node) unless node.de_duped
   end
 
   puts "Total nodes Before: #{before} After: #{tree.flatten.uniq.length}"
@@ -245,35 +260,37 @@ def build_huffman_for_nodes(parent)
 end
 
 if $0 == __FILE__
-  if ARGV.length == 0
-    cert_data = STDIN.read
+  if ARGV.length != 2
+    puts "usage: thing.rb <d|c> <file>"
+    puts "please specify one of d or c"
+    puts "d - dump an x509 cert into a newline delimited output"
+    puts "c - compress the newline delimited input list of paths"
+    exit()
+  end
+  
+  if ARGV[0] == 'd'
+    cert_data = File.read(ARGV[1])
 
     cert = OpenSSL::X509::Certificate.new(cert_data)
     content_hex = cert.extensions.detect {|ext| ext.oid == 'subjectKeyIdentifier' }
     abort('ERROR: no X509v3 extension for subjectKeyIdentifier') unless content_hex
-  
-    puts akamai_hex_to_content_set(content_hex.value).join("|")
+    ext = File.extname(ARGV[1])
+    txt_name = File.basename(ARGV[1], ext) + ".txt"
+ 
+    File.open(txt_name, "w+") do |file|
+      file.write(akamai_hex_to_content_set(content_hex.value).join("\n"))
+      file.write("\n")
+    end
+
+    exit()
   end
 
-  ARGV.each do |arg|
-    next unless FileTest.file?(arg)
-    cert_data = File.read(arg)
+    paths = File.read(ARGV[1])
+    sets = paths.split("\n")
+    ext = File.extname(ARGV[1])
+    binary = File.basename(ARGV[1], ext) + ".bin"
 
-    cert = OpenSSL::X509::Certificate.new(cert_data)
-    content_hex = cert.extensions.detect {|ext| ext.oid == 'subjectKeyIdentifier' }
-    abort('ERROR: no X509v3 extension for subjectKeyIdentifier') unless content_hex
-  
-    ext = File.extname(arg)
-    txt_name = File.basename(arg, ext) + ".txt"
-    json_name = File.basename(arg, ext) + ".json"
-    binary = File.open(File.basename(arg, ext) + ".bin", "w")
-    
-    sets = akamai_hex_to_content_set(content_hex.value)
-
-    File.open(txt_name, "w+") do |file|
-      file.write(sets)
-    end
-    File.open(json_name, "w+") do |file|
+    File.open(binary, "w+") do |file|
       parent = Node.new("")
       sets.each do |set|
         line = set.start_with?("/") ? set[1..-1] : set
@@ -282,23 +299,22 @@ if $0 == __FILE__
         chunks = line.split("/")
         parent = mk_hash(chunks, parent)
       end
-      # prime the signatures
+      puts "priming node signatures"
       parent.signature
+      puts "removing duplicates"
       de_dupe_driver(parent)
-#      parent = compress_prefix(parent)
+    #      parent = compress_prefix(parent)
 
+      puts "building huffman table for strings"
       string_huff = build_huffman_for_strings(parent)
+      puts "building huffman table for nodes"
       node_huff = build_huffman_for_nodes(parent)
       
+      puts "writing"
       strings = collect_strings(parent)
-      write_strings(binary, strings)
-      bit_file = BitWriter.new binary
+      write_strings(file, strings)
+      bit_file = BitWriter.new file
       binary_write(bit_file, parent, string_huff, node_huff)
       bit_file.pad
-      file.write(parent.to_json)
-
-    end
-    puts "Wrote:\n [%d] %s\n [%d] %s" % [File.size(txt_name), txt_name, File.size(json_name), json_name]
-
   end
 end
