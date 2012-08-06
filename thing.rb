@@ -1,8 +1,15 @@
 #!/usr/bin/env ruby
+=begin
+ usage: ruby ./thing.rb [cd] 5286016419950084643.pem
+=end
 
+# stdlib
 require 'openssl'
 require 'zlib'
 require 'stringio'
+require 'logger'
+
+# gems
 require 'rubygems'
 begin
   require 'json'
@@ -10,9 +17,11 @@ rescue
   abort('ERROR: plz2run #> gem install json')
 end
 
+# local
 require './huffman'
 
-# usage: ./content_from_pem.rb 5286016419950084643.pem
+$log = Logger.new(STDERR)
+$log.level = Logger::DEBUG
 
 class BitWriter
 
@@ -199,6 +208,7 @@ def binary_write(file, parent, string_huff, node_huff)
 #    file.write(child.path)
 #    file.write("\0")
     # index of path string
+    $log.debug('binary_write') { "path: " + path.inspect + "; encoded: " + string_huff.encode(path).inspect }
     file.write_bits(string_huff.encode(path))
     # offset to node
     # index of node, that is.
