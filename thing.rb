@@ -100,6 +100,11 @@ class Node
   def to_json(*a)
     @children.to_json(*a)
   end
+
+  def to_h
+    @children
+    Hash[@children.map {|k, v| [k, v.to_h] }]
+  end
 end
 
 def akamai_hex_to_content_set(akamai_hex)
