@@ -102,7 +102,6 @@ class Node
   end
 
   def to_h
-    @children
     Hash[@children.map {|k, v| [k, v.to_h] }]
   end
 end
