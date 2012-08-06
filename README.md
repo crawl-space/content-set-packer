@@ -9,11 +9,12 @@ and applying huffman encoding.
 Take in an v1 x509 certificate, and extract the 
 content sets, output them to newline delimited output
 
-  `$> ruby ./thing.rb d this-cert.pem > this-cert.list`
+  `$> ruby ./thing.rb d this-cert.pem`
 
+This would produce a file named 'this-cert.txt'
 Process this output to generate the compiled output
 
-  `$> ruby ./thing.rb c this-cert.list`
+  `$> ruby ./thing.rb c this-cert.txt`
 
 This would produce a file named 'this-cert.bin'
 Then, the unpack the binary with:
