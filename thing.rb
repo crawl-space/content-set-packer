@@ -69,7 +69,7 @@ class Node
     @children.has_key? key
   end
 
-  def get_child(name)
+  def [](name)
     @children[name]
   end
 
@@ -121,7 +121,7 @@ def mk_hash(sgmts,  parent)
   unless parent.has_key?(segment)
     parent.children[segment] = mk_hash(sgmts, Node.new(segment))
   else
-    mk_hash(sgmts, parent.get_child(segment))
+    mk_hash(sgmts, parent[segment])
 #  else
 #    hash[segment].update(mk_hash(sgmts, hash[segment]))
   end
