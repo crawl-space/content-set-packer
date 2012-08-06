@@ -21,7 +21,8 @@ end
 require './huffman'
 
 $log = Logger.new(STDERR)
-$log.level = Logger::DEBUG
+#$log.level = Logger::DEBUG
+$log.level = Logger::FATAL
 
 class BitWriter
 

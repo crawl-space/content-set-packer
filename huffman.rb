@@ -89,11 +89,11 @@ class HuffmanEncoding
   end
 
   def encode(entry)
-    self.lookup.invert[entry]
+    self.lookup.invert[entry] || ""
   end
 
   def decode(code)
-    self.lookup[code]
+    self.lookup[code] || ""
   end
 
   def encode_list(list)
