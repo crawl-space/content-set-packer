@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 =begin
- usage: ruby ./thing.rb [cd] 5286016419950084643.pem
+ usage: ruby ./thing.rb <dpc> 5286016419950084643.{pem,txt}
 =end
 
 # stdlib
@@ -8,6 +8,7 @@ require 'openssl'
 require 'zlib'
 require 'stringio'
 require 'logger'
+require 'pp'
 
 # gems
 require 'rubygems'
@@ -228,6 +229,23 @@ def binary_write(file, parent, string_huff, node_huff)
   end
 end
 
+def list_from_file(path)
+  paths = File.read(path)
+  paths.split("\n")
+end
+
+def tree_from_list(sets)
+  parent = Node.new("")
+  sets.each do |set|
+    line = set.start_with?("/") ? set[1..-1] : set
+
+    # => ["content", "beta", "rhel", "server", "6", "$releasever", "$basearch", "scalablefilesystem", "debug"]
+    chunks = line.split("/")
+    parent = mk_hash(chunks, parent)
+  end
+  parent
+end
+
 def write_strings(file, strings)
   string_io = StringIO.new()
   strings.each_key do |string|
@@ -283,11 +301,13 @@ if $0 == __FILE__
     puts "usage: thing.rb <d|c> <file>"
     puts "please specify one of d or c"
     puts "d - dump an x509 cert into a newline delimited output"
+    puts "p - pretty print the newline delimited list, as a tree"
     puts "c - compress the newline delimited input list of paths"
     exit()
   end
   
-  if ARGV[0] == 'd'
+  case ARGV[0]
+  when 'd'
     cert_data = File.read(ARGV[1])
 
     cert = OpenSSL::X509::Certificate.new(cert_data)
@@ -301,8 +321,13 @@ if $0 == __FILE__
       file.write("\n")
     end
 
-    exit()
-  end
+  when 'p'
+    sets = list_from_file(ARGV[1])
+    parent = tree_from_list(sets)
+
+    de_dupe_driver(parent)
+    pp parent.to_h
+  when 'c'
 
     paths = File.read(ARGV[1])
     sets = paths.split("\n")
@@ -335,5 +360,7 @@ if $0 == __FILE__
       bit_file = BitWriter.new file
       binary_write(bit_file, parent, string_huff, node_huff)
       bit_file.pad
-  end
+    end
+
+  end # esac
 end
