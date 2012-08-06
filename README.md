@@ -22,6 +22,8 @@ Then, the unpack the binary with:
   `$> ./unpack this-cert.bin`
 
 
+The 'thing.rb' supports a "-v" verbose flag.
+
 == Code compiles ==
 
 To compile the 'unpack' command, just run `make`.

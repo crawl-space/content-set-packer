@@ -20,7 +20,7 @@ end
 # local
 require './huffman'
 
-$log = Logger.new(STDERR)
+$log = Logger.new(STDOUT)
 #$log.level = Logger::DEBUG
 $log.level = Logger::FATAL
 
@@ -169,7 +169,7 @@ def de_dupe(list, node)
       if sub_tree.children[key].signature == node.signature
         sub_tree.children[key].de_duped = true
         sub_tree.children[key] = node
-        puts "Found dupe! " + node.signature unless node.signature == "[]"
+        $log.info("Found dupe!" ) { node.signature unless node.signature == "[]" }
       end
     end
   end
@@ -180,7 +180,7 @@ def de_dupe_driver(tree)
   before = list.length
   i = 1
   list.each do |node|
-    puts "de dupe #{i} / #{before}"
+    $log.info('de_dupe_driver') { "de dupe #{i} / #{before}" }
     i += 1
     de_dupe(list, node) unless node.de_duped
   end
@@ -271,6 +271,10 @@ def build_huffman_for_nodes(parent)
 end
 
 if $0 == __FILE__
+  if ARGV.include?("-v")
+    $log.level = Logger::DEBUG
+    ARGV.delete("-v")
+  end
   if ARGV.length != 2
     puts "usage: thing.rb <d|c> <file>"
     puts "please specify one of d or c"
