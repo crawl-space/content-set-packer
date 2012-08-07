@@ -1,11 +1,15 @@
 #!/usr/bin/env ruby
 
-$:.unshift(File.dirname(__FILE__))
-require 'huffman.rb'
-require 'thing.rb'
+# stdlib
+require 'stringio'
+require 'zlib'
 
 def inflate(data)
   Zlib::Inflate.inflate(data)
+end
+
+def deflate(data)
+  Zlib::Deflate.deflate(data)
 end
 
 # there is not a difference for us, in these two
@@ -27,14 +31,21 @@ if $0 == __FILE__
   ARGV.each do |arg|
     file = File.open(arg)
 
-    z_data = file.read()
-    data = inflate(z_data)
+    z_data_io = StringIO.new(file.read())
+    data = inflate(z_data_io.read())
+    e_pos = deflate(data).bytesize()
+    z_data_io.seek(e_pos)
+
     puts "data is:"
     puts load_dictionary(data).map {|x| "\t#{x}" }
 
     puts "dictionary stats:"
-    puts "\tcompressed size: %d" % z_data.bytesize()
+    puts "\tcompressed size: %d" % deflate(data).bytesize()
     puts "\tuncompressed size: %d" % data.bytesize()
+
+    buf = z_data_io.read()
+    puts "Read %d bytes\n" % buf.bytesize()
+
   end
 end
  
