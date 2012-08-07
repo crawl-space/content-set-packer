@@ -1,8 +1,16 @@
 #!/usr/bin/env ruby
+=begin
+ usage: ruby ./thing.rb <dpc> 5286016419950084643.{pem,txt}
+=end
 
+# stdlib
 require 'openssl'
 require 'zlib'
 require 'stringio'
+require 'logger'
+require 'pp'
+
+# gems
 require 'rubygems'
 begin
   require 'json'
@@ -10,9 +18,12 @@ rescue
   abort('ERROR: plz2run #> gem install json')
 end
 
+# local
 require './huffman'
 
-# usage: ./content_from_pem.rb 5286016419950084643.pem
+$log = Logger.new(STDOUT)
+#$log.level = Logger::DEBUG
+$log.level = Logger::FATAL
 
 class BitWriter
 
@@ -59,7 +70,7 @@ class Node
     @children.has_key? key
   end
 
-  def get_child(name)
+  def [](name)
     @children[name]
   end
 
@@ -90,6 +101,10 @@ class Node
   def to_json(*a)
     @children.to_json(*a)
   end
+
+  def to_h
+    Hash[@children.map {|k, v| [k, v.to_h] }]
+  end
 end
 
 def akamai_hex_to_content_set(akamai_hex)
@@ -111,7 +126,7 @@ def mk_hash(sgmts,  parent)
   unless parent.has_key?(segment)
     parent.children[segment] = mk_hash(sgmts, Node.new(segment))
   else
-    mk_hash(sgmts, parent.get_child(segment))
+    mk_hash(sgmts, parent[segment])
 #  else
 #    hash[segment].update(mk_hash(sgmts, hash[segment]))
   end
@@ -159,7 +174,7 @@ def de_dupe(list, node)
       if sub_tree.children[key].signature == node.signature
         sub_tree.children[key].de_duped = true
         sub_tree.children[key] = node
-        puts "Found dupe! " + node.signature unless node.signature == "[]"
+        $log.info("Found dupe!" ) { node.signature unless node.signature == "[]" }
       end
     end
   end
@@ -170,7 +185,7 @@ def de_dupe_driver(tree)
   before = list.length
   i = 1
   list.each do |node|
-    puts "de dupe #{i} / #{before}"
+    $log.info('de_dupe_driver') { "de dupe #{i} / #{before}" }
     i += 1
     de_dupe(list, node) unless node.de_duped
   end
@@ -199,6 +214,7 @@ def binary_write(file, parent, string_huff, node_huff)
 #    file.write(child.path)
 #    file.write("\0")
     # index of path string
+    $log.debug('binary_write') { "path: " + path.inspect + "; encoded: " + string_huff.encode(path).inspect }
     file.write_bits(string_huff.encode(path))
     # offset to node
     # index of node, that is.
@@ -211,6 +227,23 @@ def binary_write(file, parent, string_huff, node_huff)
       binary_write(file, child, string_huff, node_huff)
       child.written = true
   end
+end
+
+def list_from_file(path)
+  paths = File.read(path)
+  paths.split("\n")
+end
+
+def tree_from_list(sets)
+  parent = Node.new("")
+  sets.each do |set|
+    line = set.start_with?("/") ? set[1..-1] : set
+
+    # => ["content", "beta", "rhel", "server", "6", "$releasever", "$basearch", "scalablefilesystem", "debug"]
+    chunks = line.split("/")
+    parent = mk_hash(chunks, parent)
+  end
+  parent
 end
 
 def write_strings(file, strings)
@@ -260,15 +293,21 @@ def build_huffman_for_nodes(parent)
 end
 
 if $0 == __FILE__
+  if ARGV.include?("-v")
+    $log.level = Logger::DEBUG
+    ARGV.delete("-v")
+  end
   if ARGV.length != 2
     puts "usage: thing.rb <d|c> <file>"
     puts "please specify one of d or c"
     puts "d - dump an x509 cert into a newline delimited output"
+    puts "p - pretty print the newline delimited list, as a tree"
     puts "c - compress the newline delimited input list of paths"
     exit()
   end
   
-  if ARGV[0] == 'd'
+  case ARGV[0]
+  when 'd'
     cert_data = File.read(ARGV[1])
 
     cert = OpenSSL::X509::Certificate.new(cert_data)
@@ -282,8 +321,13 @@ if $0 == __FILE__
       file.write("\n")
     end
 
-    exit()
-  end
+  when 'p'
+    sets = list_from_file(ARGV[1])
+    parent = tree_from_list(sets)
+
+    de_dupe_driver(parent)
+    pp parent.to_h
+  when 'c'
 
     paths = File.read(ARGV[1])
     sets = paths.split("\n")
@@ -316,5 +360,7 @@ if $0 == __FILE__
       bit_file = BitWriter.new file
       binary_write(bit_file, parent, string_huff, node_huff)
       bit_file.pad
-  end
+    end
+
+  end # esac
 end
