@@ -1,10 +1,12 @@
-== Overview ==
+Overview
+========
 
 POC to compile a data set into a modified radix tree, 
 and applying huffman encoding.
 
 
-== Usage ==
+Usage
+=====
 
 Take in an v1 x509 certificate, and extract the 
 content sets, output them to newline delimited output
@@ -31,7 +33,8 @@ or
 
 The 'thing.rb' supports a "-v" verbose flag.
 
-== Code compiles ==
+Code compiles
+=============
 
 To compile the 'unpack' command, just run `make`.
 ( this requires make, gcc, and zlib-devel)
