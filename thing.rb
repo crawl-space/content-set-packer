@@ -248,7 +248,8 @@ end
 
 def write_strings(file, strings)
   string_io = StringIO.new()
-  strings.each_key do |string|
+
+  strings.each do |string|
     string_io.write(string)
     string_io.write("\0")
   end
@@ -264,13 +265,21 @@ def collect_strings(parent)
       strings[key] += 1
     end
   end
-  strings
+
+  list = []
+  strings.sort { |l, r| l[1] <=> r[1] }.each do |string, weight|
+    list << string
+  end
+
+  list
 end
 
-def build_huffman_for_strings(parent)
+def build_huffman_for_strings(strings)
     paths = []
-    parent.flatten.uniq.each do |node|
-      node.children.each_key {|key| paths << key}
+    i = 1
+    strings.each do |string|
+      i.times { paths << string }
+      i += 1
     end
     HuffmanEncoding.new paths
 end
@@ -349,13 +358,15 @@ if $0 == __FILE__
       de_dupe_driver(parent)
     #      parent = compress_prefix(parent)
 
-      puts "building huffman table for strings"
-      string_huff = build_huffman_for_strings(parent)
       puts "building huffman table for nodes"
       node_huff = build_huffman_for_nodes(parent)
-      
-      puts "writing"
+ 
       strings = collect_strings(parent)
+    
+      puts "building huffman table for strings"
+      string_huff = build_huffman_for_strings(strings)
+ 
+      puts "writing"
       write_strings(file, strings)
       bit_file = BitWriter.new file
       binary_write(bit_file, parent, string_huff, node_huff)

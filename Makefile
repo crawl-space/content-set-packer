@@ -1,6 +1,6 @@
 
 CFLAGS += $(shell pkg-config --libs --cflags zlib)
-CFLAGS += -Wall
+CFLAGS += -Wall -g
 
 ifndef CC
 CC = gcc
@@ -11,8 +11,8 @@ TMP_FILES = $(wildcard *~)
 
 all: $(APP)
 
-%: %.c
-	$(CC) $(CFLAGS) -o $@ $<
+unpack: unpack.c huffman.c huffman.h
+	$(CC) $(CFLAGS) -o $@ unpack.c huffman.c huffman.h
 
 clean:
 	rm -rf $(APP) $(TMP_FILES)

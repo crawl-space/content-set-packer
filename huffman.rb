@@ -49,20 +49,34 @@ class NodeQueue
     generate_tree
   end
 
+  def find_smallest(not_this)
+    smallest = nil
+    for i in 0..@nodes.size - 1
+      if i == not_this
+        next
+      end
+      if smallest.nil? or @nodes[i].weight < @nodes[smallest].weight
+        smallest = i
+      end
+    end
+    smallest
+  end
+
+
   def generate_tree
     while @nodes.size > 1
-      sorted = @nodes.sort { |a,b| a.weight <=> b.weight }
-      to_merge = []
-      2.times { to_merge << sorted.shift }
-      sorted << merge_nodes(to_merge[0], to_merge[1])
-      @nodes = sorted
+      node1 = self.find_smallest(-1)
+      node2 = self.find_smallest(node1)
+      new = merge_nodes(@nodes[node1], @nodes[node2])
+      @nodes[node1] = new
+      @nodes.delete_at(node2)
     end
     @huffman_root = @nodes.first
   end
 
   def merge_nodes(node1, node2)
-    left = node1.weight > node2.weight ? node2 : node1
-    right = left == node1 ? node2 : node1
+    right = node1
+    left = node2
     node = HuffNode.new(:weight => left.weight + right.weight, :left => left, :right => right)
     left.parent = right.parent = node
     node

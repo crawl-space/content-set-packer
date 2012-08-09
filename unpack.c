@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <zlib.h>
 
+#include "huffman.h"
+
 #define CHUNK 1024
 
 struct node {
@@ -12,15 +14,15 @@ struct node {
 };
 
 static int 
-load_dictionary(FILE *source, unsigned char **dictionary) {
+load_dictionary(FILE *source, char ***dictionary, int *dictionary_size)
+{
 	int ret;
-	unsigned have;
 	z_stream strm;
 	unsigned char in[CHUNK];
 	int read = 0;
 
+	// XXX keep a ref to buf for free()
 	unsigned char *buf = malloc(sizeof(char) * CHUNK);
-	*dictionary = buf;
 
 	printf("unpacking string dictionary\n");
 
@@ -67,7 +69,6 @@ load_dictionary(FILE *source, unsigned char **dictionary) {
 				printf("MEMORY ERROR\n");
 				return -1;
 			    }
-			    have = CHUNK - strm.avail_out;
 			    read += CHUNK - strm.avail_out;
 		} while (strm.avail_out == 0);
 
@@ -75,15 +76,32 @@ load_dictionary(FILE *source, unsigned char **dictionary) {
 		/* done when inflate() says it's done */
 	} while (ret != Z_STREAM_END);
 
-	printf("data is:\n");
+	int offset_size = 64;
+	int *dictionary_offsets = malloc (sizeof (int) * offset_size);
+	*dictionary_size = 1;
 
 	int i;
-	for (i=0; i < read; i++) {
+	int j = 0;
+	dictionary_offsets[j++] = 0;
+	for (i = 0; i < read; i++) {
 		if (buf[i] == '\0') {
-			putchar('\n');
-		} else {
-			putchar(buf[i]);
+			if (i != read - 1) {
+				dictionary_offsets[j++] = i + 1;
+				(*dictionary_size)++;
+				if (j == offset_size) {
+					offset_size = offset_size * 2;
+					dictionary_offsets =
+						realloc (dictionary_offsets,
+							 sizeof (int) *
+							 offset_size);
+				}
+			}
 		}
+	}
+
+	*dictionary = malloc (sizeof (char *) * offset_size);
+	for (i = 0; i < offset_size; i++) {
+		(*dictionary)[i] = (char *) buf + dictionary_offsets[i];
 	}
 
 	// rewind back to unused zlib bytes
@@ -95,6 +113,7 @@ load_dictionary(FILE *source, unsigned char **dictionary) {
 	printf ("dictionary stats:\n");
 	printf ("\tcompressed size: %zu\n", ftell(source));
 	printf ("\tuncompressed size: %d\n", read);
+	printf ("\tentries found: %d\n", *dictionary_size);
 	inflateEnd(&strm);
 
 	return ret == Z_STREAM_END ? 0 : -1;
@@ -117,7 +136,8 @@ load_node_list(FILE *stream, struct node **list) {
 int
 main(int argc, char **argv) {
 	FILE *fp;
-	unsigned char *dictionary;
+	char **dictionary;
+	int dictionary_size;
 	struct node *list;
 
 	if (argc != 2) {
@@ -131,11 +151,19 @@ main(int argc, char **argv) {
 		return -1;
 	}
 
-	if (load_dictionary(fp, &dictionary)) {
+	if (load_dictionary(fp, &dictionary, &dictionary_size)) {
 		printf("dictionary inflation failed. exiting\n");
 		return -1;
 	}
 
+	struct huffman_node *tree = huffman_build_tree ((void **) dictionary,
+							dictionary_size);
+
+	int bits_read;
+	short bits = 0xC0;
+
+	printf("\n\n%s\n", huffman_lookup (tree, (unsigned char *) &bits, &bits_read));
+	
 	if (load_node_list(fp, &list)) {
 		printf("node list parsing failed. exiting\n");
 		return -1;
