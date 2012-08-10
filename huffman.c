@@ -43,7 +43,7 @@ huffman_build_tree(void **values, int count)
 			malloc (sizeof (struct huffman_node));
 
 		node->value = values[i];
-		node->weight = i;
+		node->weight = i + 1;
 		node->left = NULL;
 		node->right = NULL;
 
@@ -77,9 +77,11 @@ huffman_lookup (struct huffman_node *tree, unsigned char *bits, int *bits_read)
 {
 
 	struct huffman_node *node = tree;
-	*bits_read = 0;
 
 	while (true) {
+		if (node == NULL) {
+			return NULL;
+		}
 		if (node->value != NULL) {
 			return node->value;
 		}

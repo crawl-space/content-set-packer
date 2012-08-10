@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <zlib.h>
 
 #include "huffman.h"
@@ -8,9 +9,9 @@
 #define CHUNK 1024
 
 struct node {
-	struct node *next;
-	unsigned int path;
-	unsigned int children[];
+	int count;
+	char **paths;
+	struct node **children;
 };
 
 static int 
@@ -99,10 +100,16 @@ load_dictionary(FILE *source, char ***dictionary, int *dictionary_size)
 		}
 	}
 
-	*dictionary = malloc (sizeof (char *) * offset_size);
-	for (i = 0; i < offset_size; i++) {
+	*dictionary = malloc (sizeof (char *) * (*dictionary_size + 1));
+	for (i = 0; i < *dictionary_size; i++) {
 		(*dictionary)[i] = (char *) buf + dictionary_offsets[i];
 	}
+
+	(*dictionary_size)++;
+	// Add in the end of node sentinal string
+	char *sentinal = malloc (sizeof (char));
+	sentinal[0] = 0x00;
+	(*dictionary)[i] = sentinal;
 
 	// rewind back to unused zlib bytes
 	if (fseek(source, (long) strm.avail_in * -1, SEEK_CUR)) {
@@ -120,17 +127,109 @@ load_dictionary(FILE *source, char ***dictionary, int *dictionary_size)
 }
 
 static int
-load_node_list(FILE *stream, struct node **list) {
+load_content_sets(FILE *stream, struct node **list,
+		  struct huffman_node *dictionary_tree) {
 
-	unsigned char buf[CHUNK];
+	unsigned char *buf = malloc (sizeof (char *) * CHUNK);
 	size_t read;
-	struct node *np = malloc(sizeof(struct node));
-	*list = np;
+	struct node **nodes;
+	int i;
 
-	read = fread(buf, 1, CHUNK, stream);
+	unsigned char count;
+	fread(&count, sizeof (unsigned char), 1, stream);
+	printf("number of nodes: %hd\n", count);
+
+
+	nodes = malloc (sizeof (struct node *) * (unsigned short) count);
+	for (i = 0; i < (unsigned short) count; i++) {
+		nodes[i] = malloc (sizeof (struct node));
+	}
+
+	read = fread (buf, sizeof (char), CHUNK, stream);
 	printf("Read %zu bytes\n", read);
 
+	/* 
+	 * the parent node doesn't go in the huffman tree, as nothing else
+	 * references it.
+	 */
+	struct huffman_node *tree =
+		huffman_build_tree ((void **) nodes + 1,
+				    (unsigned short) count - 1);
+
+	int bits_read = 0;
+	for (i = 0; i < count; i++) {
+		struct node *node = nodes[i];
+		node->count = 0;
+
+		// XXX hard coded
+		node->paths = malloc (sizeof (char *) * 64);
+		node->children = malloc (sizeof (struct node *) * 64);
+
+		while (true) {
+			char *path = (char *) huffman_lookup (dictionary_tree,
+							      buf, &bits_read);
+			buf = buf + bits_read / 8;
+			bits_read = bits_read % 8;
+
+			if (path[0] == '\0') {
+				break;
+			}
+
+			struct node *child =
+				(struct node *) huffman_lookup (tree, buf,
+								&bits_read);
+			buf = buf + bits_read / 8;
+			bits_read = bits_read % 8;
+		
+			node->paths[node->count] = path;
+			node->children[node->count] = child;
+			node->count++;
+		}
+	}
+
+	*list = nodes[0];
 	return 0;
+}
+
+struct stack {
+	struct stack *next;
+	struct stack *prev;
+	char *path;
+};
+
+static void
+dump_content_set (struct node *content_sets, struct stack *head,
+		  struct stack *tail)
+{
+	int i;
+	struct stack stack;
+	stack.prev = tail;
+	tail->next = &stack;
+
+	for (i = 0; i < content_sets->count; i++) {
+		stack.path = content_sets->paths[i];
+		dump_content_set(content_sets->children[i], head, &stack);
+	}
+
+	if (content_sets->count == 0) {
+		struct stack *cur = head;
+
+		for (cur = head->next; cur != &stack; cur = cur->next) {
+			printf("/%s", cur->path);
+		}
+		printf("\n");
+	}
+}
+
+static void
+dump_content_sets (struct node *content_sets)
+{
+	struct stack stack;
+	stack.next = NULL;
+	stack.prev = NULL;
+	stack.path = NULL;
+
+	dump_content_set (content_sets, &stack, &stack);
 }
 
 int
@@ -138,7 +237,7 @@ main(int argc, char **argv) {
 	FILE *fp;
 	char **dictionary;
 	int dictionary_size;
-	struct node *list;
+	struct node *content_sets;
 
 	if (argc != 2) {
 		printf("usage: unpack <bin file>\n");
@@ -156,18 +255,15 @@ main(int argc, char **argv) {
 		return -1;
 	}
 
-	struct huffman_node *tree = huffman_build_tree ((void **) dictionary,
-							dictionary_size);
+	struct huffman_node *dictionary_tree =
+		huffman_build_tree ((void **) dictionary, dictionary_size);
 
-	int bits_read;
-	short bits = 0xC0;
-
-	printf("\n\n%s\n", huffman_lookup (tree, (unsigned char *) &bits, &bits_read));
-	
-	if (load_node_list(fp, &list)) {
+	if (load_content_sets(fp, &content_sets, dictionary_tree)) {
 		printf("node list parsing failed. exiting\n");
 		return -1;
 	}
+
+	dump_content_sets (content_sets);
 
 	return 0;
 }

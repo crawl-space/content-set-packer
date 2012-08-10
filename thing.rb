@@ -22,20 +22,22 @@ end
 require './huffman'
 
 $log = Logger.new(STDOUT)
-#$log.level = Logger::DEBUG
-$log.level = Logger::FATAL
+$log.level = Logger::DEBUG
+#$log.level = Logger::FATAL
+
+$sentinal = "SENTINAL"
 
 class BitWriter
 
   def initialize(stream)
     @stream = stream
     @byte = 0x00
-    @count = 8
+    @count = 7
   end
 
   def write(char)
     if char == '1'
-      @byte |= 1 << @count
+      @byte |= 0x01 << @count
     end
     @count -= 1
     if @count == -1
@@ -50,8 +52,8 @@ class BitWriter
   end
 
   def pad()
-    @count = 8
-    @stream.write(Array(@byte).pack('C'))
+    @stream.write(Array(@byte).pack('c'))
+    @count = 7
     @byte = 0x00
   end
 end
@@ -199,33 +201,20 @@ def ran_char(val)
   return val
 end
 
-def binary_write(file, parent, string_huff, node_huff)
-#  file.write(parent.path)
-#  file.write("\0")
-  #offset to child node indicies
-   # not needed, can just go write to children indicies
-  #file.write(ran_char)
-  if parent.written
-    return
-  end
-
-  parent.children.each do |path, child|
-#    puts "PATH: " + child.path
-#    file.write(child.path)
-#    file.write("\0")
-    # index of path string
-    $log.debug('binary_write') { "path: " + path.inspect + "; encoded: " + string_huff.encode(path).inspect }
-    file.write_bits(string_huff.encode(path))
-    # offset to node
-    # index of node, that is.
-    file.write_bits(node_huff.encode(child))
-  end
-  # reserve null byte for end of node info
-  # 3 0s are reserved in our name huffman table to denote end of node
-  file.write_bits("000")
-  parent.children.each do |path, child|
-      binary_write(file, child, string_huff, node_huff)
-      child.written = true
+def binary_write(file, node_list, string_huff, node_huff)
+  node_list.each do |node|
+    $log.debug('binary_write') { "begin node: " + node_huff.encode(node) }
+    node.children.each do |path, child|
+      # index of path string
+      $log.debug('binary_write') { "\tpath: " + path.inspect + "; encoded: " + string_huff.encode(path).inspect }
+      file.write_bits(string_huff.encode(path))
+      # offset to node
+      # index of node, that is.
+      file.write_bits(node_huff.encode(child))
+      $log.debug('binary_write') { "\tnode encoded: " + node_huff.encode(child) }
+    end
+    # end of node is indicated by the special sentinal huffman coding of \0
+    file.write_bits(string_huff.encode($sentinal))
   end
 end
 
@@ -281,22 +270,38 @@ def build_huffman_for_strings(strings)
       i.times { paths << string }
       i += 1
     end
+    # add on sentinal string
+    i.times { paths << $sentinal }
+    puts paths
     HuffmanEncoding.new paths
 end
 
-def build_huffman_for_nodes(parent)
-    nodes = parent.flatten.uniq
-    refs = {}
-    nodes.each do |node|
-      node.children.each do |key, node|
-        refs[node] ||= 0
-        refs[node] += 1
-      end
+def build_node_frequencies(parent)
+  nodes = parent.flatten.uniq
+  refs = {}
+  nodes.each do |node|
+    node.children.each do |key, child|
+      refs[child] ||= 0
+      refs[child] += 1
     end
-    refs[parent] = 1
+  end
+
+  list = []
+  refs.sort { |l, r| l[1] <=> r[1] }.each do |node, weight|
+    list << node
+  end
+
+  list
+end
+
+
+def build_huffman_for_nodes(list)
+    # parent doesn't have to go into the table
+    i = 1
     expanded = []
-    refs.each do |node, freq|
-      freq.times {expanded << node}
+    list.each do |node|
+      i.times {expanded << node}
+      i += 1
     end
     table = HuffmanEncoding.new expanded
 end
@@ -359,8 +364,13 @@ if $0 == __FILE__
     #      parent = compress_prefix(parent)
 
       puts "building huffman table for nodes"
-      node_huff = build_huffman_for_nodes(parent)
- 
+      node_list = build_node_frequencies(parent)
+      node_huff = build_huffman_for_nodes(node_list)
+
+      # XXX add sentinal value to strings to indicate end of node.
+      # should be most frequent one. the string itself doesn't have to
+      # be stored, since we just care about the bitstring.
+      
       strings = collect_strings(parent)
     
       puts "building huffman table for strings"
@@ -368,8 +378,19 @@ if $0 == __FILE__
  
       puts "writing"
       write_strings(file, strings)
+
+      # write out the number of unique path nodes into 1 or more bytes.  if <
+      # 128 nodes, write in a single byte. if > 128 nodes, the first byte will
+      # begin with a '1' to indicate as such. the following bits in the byte
+      # indicate how many bytes following the first byte are used to store the
+      # size.
+
+      node_count = node_list.count + 1
+      puts node_count
+      file.write([node_count].pack("c"))
+
       bit_file = BitWriter.new file
-      binary_write(bit_file, parent, string_huff, node_huff)
+      binary_write(bit_file, [parent] + node_list, string_huff, node_huff)
       bit_file.pad
     end
 
