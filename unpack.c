@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 #include <zlib.h>
 
 #include "huffman.h"
@@ -15,7 +16,8 @@ struct node {
 };
 
 static int 
-load_dictionary(FILE *source, char ***dictionary, int *dictionary_size)
+load_dictionary(FILE *source, char ***dictionary, int *dictionary_size,
+		bool stats)
 {
 	int ret;
 	z_stream strm;
@@ -24,9 +26,6 @@ load_dictionary(FILE *source, char ***dictionary, int *dictionary_size)
 
 	// XXX keep a ref to buf for free()
 	unsigned char *buf = malloc(sizeof(char) * CHUNK);
-
-	printf("unpacking string dictionary\n");
-
 
 	/* allocate inflate state */
 	strm.zalloc = Z_NULL;
@@ -117,10 +116,13 @@ load_dictionary(FILE *source, char ***dictionary, int *dictionary_size)
 		return -1;
 	}
 
-	printf ("dictionary stats:\n");
-	printf ("\tcompressed size: %zu\n", ftell(source));
-	printf ("\tuncompressed size: %d\n", read);
-	printf ("\tentries found: %d\n", *dictionary_size);
+	if (stats) {
+		printf ("dictionary stats:\n");
+		printf ("\tcompressed size: %zu\n", ftell(source));
+		printf ("\tuncompressed size: %d\n", read);
+		printf ("\tentries found: %d\n", *dictionary_size);
+	}
+
 	inflateEnd(&strm);
 
 	return ret == Z_STREAM_END ? 0 : -1;
@@ -128,7 +130,7 @@ load_dictionary(FILE *source, char ***dictionary, int *dictionary_size)
 
 static int
 load_content_sets(FILE *stream, struct node **list,
-		  struct huffman_node *dictionary_tree) {
+		  struct huffman_node *dictionary_tree, bool stats) {
 
 	unsigned char *buf = malloc (sizeof (char *) * CHUNK);
 	size_t read;
@@ -137,7 +139,11 @@ load_content_sets(FILE *stream, struct node **list,
 
 	unsigned char count;
 	fread(&count, sizeof (unsigned char), 1, stream);
-	printf("number of nodes: %hd\n", count);
+
+	if (stats) {
+		printf("node stats:\n");
+		printf("\tnumber of nodes: %hd\n", count);
+	}
 
 
 	nodes = malloc (sizeof (struct node *) * (unsigned short) count);
@@ -146,7 +152,9 @@ load_content_sets(FILE *stream, struct node **list,
 	}
 
 	read = fread (buf, sizeof (char), CHUNK, stream);
-	printf("Read %zu bytes\n", read);
+	if (stats) {
+		printf("\tbytes: %zu\n", read);
+	}
 
 	/* 
 	 * the parent node doesn't go in the huffman tree, as nothing else
@@ -226,10 +234,100 @@ dump_content_sets (struct node *content_sets)
 {
 	struct stack stack;
 	stack.next = NULL;
-	stack.prev = NULL;
 	stack.path = NULL;
 
 	dump_content_set (content_sets, &stack, &stack);
+}
+
+static void
+count_content_set (struct node *content_sets, struct stack *head,
+		   struct stack *tail, int *count)
+{
+	int i;
+	struct stack stack;
+	tail->next = &stack;
+
+	for (i = 0; i < content_sets->count; i++) {
+		stack.path = content_sets->paths[i];
+		count_content_set(content_sets->children[i], head, &stack,
+				  count);
+	}
+
+	if (content_sets->count == 0) {
+		(*count)++;
+	}
+}
+
+static void
+count_content_sets (struct node *content_sets, int *count)
+{
+	struct stack stack;
+	stack.next = NULL;
+	stack.path = NULL;
+
+	count_content_set (content_sets, &stack, &stack, count);
+}
+
+static void
+check_content_set (struct node *content_sets, const char *path)
+{
+	struct node *cur = content_sets;
+	struct stack head;
+	head.next = NULL;
+	head.path = NULL;
+	struct stack *stack;
+	stack = &head;
+
+	bool found;
+	while(cur != NULL) {
+		int i;
+		found = false;
+		if (cur->count == 0) {
+			found = true;
+			break;
+		}
+		for (i = 0; i < cur->count; i++) {
+			int len = strlen(cur->paths[i]);
+			if (cur->paths[i][0] == '$' ||
+			    !strncmp(cur->paths[i], path, len)) {
+				char *slash = index(path, '/');
+				/*
+				 * we've hit then end. if the content set isn't
+				 * also at the end, it's not a match
+				 */
+				if (slash == NULL ||
+				    strlen(slash + 1) == 0) {
+					if (cur->count != 0) {
+						found = false;
+						break;
+					}
+				}
+				path = slash + 1;	
+				found = true;
+
+				struct stack *top =
+					malloc (sizeof (struct stack));
+				stack->next = top;
+				top->path = cur->paths[i];
+				stack = top;
+				cur = cur->children[i];
+				break;
+			}
+		}
+		if (!found) {
+			break;
+		}
+	}
+
+	if (!found) {
+		printf ("no match found\n");
+	} else {
+		struct stack *cur;
+		for (cur = head.next; cur != NULL; cur = cur->next) {
+			printf("/%s", cur->path);
+		}
+		printf ("\n");
+	}
 }
 
 int
@@ -239,18 +337,47 @@ main(int argc, char **argv) {
 	int dictionary_size;
 	struct node *content_sets;
 
-	if (argc != 2) {
-		printf("usage: unpack <bin file>\n");
+	bool stats = false;
+	bool dump = false;
+	bool check = false;
+
+	if (argc < 3) {
+		printf("usage: unpack [mode] [bin file]\n");
+		printf("mode is one of:\n");
+		printf("s - print stats for the binary content set blob\n");
+		printf("d - dump the blob contents to stdout\n");
+		printf("c - check if a path is allowed by the blob\n");
+		printf("\n");
+		printf("c requires an extra argument after the bin file,\n"
+		       "for the path to check. the path must start  with "
+		       "a '/'\n\n");
 		return -1;
 	}
 
-	fp = fopen(argv[1], "r");
+	switch (argv[1][0]) {
+		case 's':
+			stats = true;
+			break;
+		case 'd':
+			dump = true;
+			break;
+		case 'c':
+			check = true;
+			if (argc != 4) {
+				printf("error: must specify a path "
+				       "with check\n");
+				return -1;
+			}
+			break;
+	}
+
+	fp = fopen(argv[2], "r");
 	if (fp == NULL) {
 		printf("error: unable to open file: %s\n", argv[1]);
 		return -1;
 	}
 
-	if (load_dictionary(fp, &dictionary, &dictionary_size)) {
+	if (load_dictionary(fp, &dictionary, &dictionary_size, stats)) {
 		printf("dictionary inflation failed. exiting\n");
 		return -1;
 	}
@@ -258,12 +385,24 @@ main(int argc, char **argv) {
 	struct huffman_node *dictionary_tree =
 		huffman_build_tree ((void **) dictionary, dictionary_size);
 
-	if (load_content_sets(fp, &content_sets, dictionary_tree)) {
+	if (load_content_sets(fp, &content_sets, dictionary_tree, stats)) {
 		printf("node list parsing failed. exiting\n");
 		return -1;
 	}
 
-	dump_content_sets (content_sets);
+	if (stats) {
+		int count = 0;
+		count_content_sets(content_sets, &count);
+		printf("\tcontent paths: %d\n", count);
+	} else if (dump) {
+		dump_content_sets (content_sets);
+	} else if (check) {
+		const char *path = argv[3];
+		if (path[0] == '/') {
+			path++;
+		}
+		check_content_set (content_sets, path);
+	}
 
 	return 0;
 }
