@@ -22,8 +22,8 @@ end
 require './huffman'
 
 $log = Logger.new(STDOUT)
-$log.level = Logger::DEBUG
-#$log.level = Logger::FATAL
+#$log.level = Logger::DEBUG
+$log.level = Logger::FATAL
 
 $sentinal = "SENTINAL"
 
@@ -272,7 +272,6 @@ def build_huffman_for_strings(strings)
     end
     # add on sentinal string
     i.times { paths << $sentinal }
-    puts paths
     HuffmanEncoding.new paths
 end
 
@@ -386,7 +385,6 @@ if $0 == __FILE__
       # size.
 
       node_count = node_list.count + 1
-      puts node_count
       file.write([node_count].pack("c"))
 
       bit_file = BitWriter.new file
