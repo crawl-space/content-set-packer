@@ -3,7 +3,7 @@ File/Data Format
 
 This document details how the format is stored. For details on how to create
 the structures that will populate this data format, and how to create the
-structures from this format, please see ALGORITHM.md
+structures from this format, please see the included source code (sorry!)
 
 Data is stored in network byte order.  The format consists of 2 sections. Both
 sections represent huffman trees ordered by weight, from least to most
