@@ -4,8 +4,8 @@ Overview
 A POC to take a list of content sets (basically a listing of directories) and
 pack them into a format optimized for space efficieny and reading.
 
-For details on the file format, please see `FORMAT.md`, and the included
-source.
+For details on the file format, please see `FORMAT.md`, `ALGORITHM.md`, and the
+included source.
 
 Compilation and Usage
 =====================

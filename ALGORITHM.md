@@ -77,10 +77,10 @@ the original:
         +--+beta   |        |       |  |        |
         |  +-------+        |-------|  |        |
         |                   |jboss  +--+        |
-+-------+-------------------+rhel   |           |
-|       |                   +-------+           |
-|-------|                                       |
-|rhel   +--+-----------+                        |
++-------+                +--+rhel   |           |
+|       |                |  +-------+           |
+|-------|                |                      |
+|rhel   +--+-----------+-+                      |
 +-------+  |           |                        |
            |-----------|                        |
 +----------+$releasever|                        |
@@ -112,3 +112,29 @@ the original:
                   +---+
 ```
 
+With this structure, we can begin creating the packed data. The first step is
+to build a huffman coding for the string components of the path. In the
+example, all strings are used only once, except for rhel and source. We create
+a list of all the strings, ordered from least to most occurance. This list is
+the one written out in the path dictionary section of the binary packing. The
+ordering used in the list is what we then feed into a huffman tree for paths.
+thus, even though both os and debug occur just once in the above DAG, depending
+on the ordering in the list, one will be assigned a higher weight than the
+other (which helps the other side decode the binary format). The string huffman
+tree also includes a special sentinal value to indicate end of node in the
+binary format. This value should not be written to the binary packing, should
+be given the highest weight, and should be some string that is not used in the
+path strings themselves (to avoid collision).
+
+Next, we order the nodes from the above DAG by order of reference from other
+nodes, from least to most references. This ensures the root of the DAG is
+always first, as it has no references. Similar to the strings, we create a
+huffman tree for the nodes.
+
+We can then iterate over the node list, writing each one out to the binary
+packing. Within each node, for each string and node pair that it references, we
+look up each in their respective huffman trees, and write the huffman coding to
+the binary packing.
+
+At the end of a node, we use the special sentinal value from the string huffman
+tree to indicate end of node.
