@@ -5,6 +5,27 @@ This document details how the format is stored. For details on how to create
 the structures that will populate this data format, and how to create the
 structures from this format, please see the included source code (sorry!)
 
+```
++------------------+
+| Path Dictionary  |
+|------------------|
+|    (DEFLATED)    |
+| content\0        |
+| dist\0           |
+| beta\0           |
+| ...              |
+|==================|
+| Node Dictionary  |
+|------------------|
+| 4 (# of nodes)   |
+| 10101 101000     |
+| (path/node pair) |
+| ...              |
+| 1110 (sentinal)  |
+| ...              |
++------------------+
+```
+
 Data is stored in network byte order.  The format consists of 2 sections. Both
 sections represent huffman trees ordered by weight, from least to most
 important. In order, these sections are:
