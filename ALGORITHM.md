@@ -129,7 +129,9 @@ path strings themselves (to avoid collision).
 Next, we order the nodes from the above DAG by order of reference from other
 nodes, from least to most references. This ensures the root of the DAG is
 always first, as it has no references. Similar to the strings, we create a
-huffman tree for the nodes.
+huffman tree for the nodes. The root node should not be included in the huffman
+tree, as it is never referenced by any other nodes, so we don't need to use up
+any potential address space on it.
 
 We can then iterate over the node list, writing each one out to the binary
 packing. Within each node, for each string and node pair that it references, we
