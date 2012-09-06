@@ -105,3 +105,52 @@ huffman_lookup (struct huffman_node *tree, unsigned char *bits, int *bits_read,
 		}
 	}
 }
+
+struct stack {
+	struct stack *next;
+	bool val;
+};
+
+static void
+huffman_lookup_driver (struct huffman_node *tree, void *value,
+		       struct stack *head, struct stack *cur)
+{
+	if (tree->value == value) {
+		struct stack *x = head->next;
+		while (x != NULL) {
+			if (x->val) {
+				putchar ('1');
+			} else {
+				putchar ('0');
+			}
+			x = x->next;
+		}
+
+		return;
+	}
+
+	struct stack *next = malloc (sizeof (struct stack));
+	next->next = NULL;
+	cur->next = next;
+	
+	if (tree->left != NULL) {
+		next->val = false;
+		huffman_lookup_driver (tree->left, value, head, next);
+	}
+	if (tree->right != NULL) {
+		next->val = true;
+		huffman_lookup_driver (tree->right, value, head, next);
+	}
+
+	cur->next = NULL;
+	free (next);
+}
+
+// given a value, print its code to stdout.
+void
+huffman_reverse_lookup (struct huffman_node *tree, void *value)
+{
+	struct stack head;
+	head.next = NULL;
+	huffman_lookup_driver (tree, value, &head, &head);
+}

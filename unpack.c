@@ -176,12 +176,14 @@ load_content_sets(FILE *stream, struct node **list, int *node_count,
 		node->children = malloc (sizeof (struct node *) * 64);
 
 		if (raw) {
-			printf ("\tNode:\n");
+			printf ("  Node - ");
+			huffman_reverse_lookup (tree, node);
+			printf (":\n");
 		}
 
 		while (true) {
 			if (raw) {
-				printf("\t\t");
+				printf("    ");
 			}
 
 			char *path = (char *) huffman_lookup (dictionary_tree,
@@ -192,13 +194,13 @@ load_content_sets(FILE *stream, struct node **list, int *node_count,
 
 			if (path[0] == '\0') {
 				if (raw) {
-					printf("\n");
+					printf(" (<end>)\n");
 				}
 				break;
 			}
 
 			if (raw) {
-				printf (" :: ");
+				printf (" (%s) :: ", path);
 			}
 
 			struct node *child =
@@ -354,33 +356,19 @@ check_content_set (struct node *content_sets, const char *path)
 }
 
 static void
-print_dictionary (char **dictionary, int dictionary_size)
+print_dictionary (char **dictionary, int dictionary_size,
+		  struct huffman_node *dictionary_tree)
 {
 	int i;
 	printf ("Path Dictionary (%d entries):\n", dictionary_size);
-	for (i = 0; i < dictionary_size; i++) {
-		printf ("\t%s\n", dictionary[i]);
+	for (i = 0; i < dictionary_size - 1; i++) {
+		printf ("  %s - ", dictionary[i]);
+		huffman_reverse_lookup (dictionary_tree, dictionary[i]);
+		printf("\n");
 	}
-}
-
-static void
-print_node (struct node *content_set)
-{
-	int i;
-	printf ("\tNode:\n");
-	for (i = 0; i < content_set->count; i++) {
-		printf ("\t\t%s\n", content_set->paths[i]);
-	}
-}
-
-static void
-print_nodes (struct node **content_sets, int content_set_size)
-{
-	int i;
-	printf ("Node Dictionary (%d entries):\n", content_set_size);
-	for (i = 0; i < content_set_size; i++) {
-		print_node (content_sets[i]);
-	}
+	printf ("  <end of node indicator> - ");
+	huffman_reverse_lookup (dictionary_tree, dictionary[i]);
+	printf ("\n");
 }
 
 int
@@ -445,7 +433,7 @@ main(int argc, char **argv) {
 		huffman_build_tree ((void **) dictionary, dictionary_size);
 
 	if (raw) {
-		print_dictionary (dictionary, dictionary_size);
+		print_dictionary (dictionary, dictionary_size, dictionary_tree);
 	}
 
 	if (load_content_sets(fp, &content_sets, &content_set_size,

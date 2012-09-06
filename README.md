@@ -56,6 +56,9 @@ etc):
 
   `./unpack s this-cert.bin`
 
+To dump the raw packed file as text:
+  `./unpack r this-cert.bin`
+
 To reconstruct the content sets and dump them to stdout:
 
   `./unpack d this-cert.bin`
