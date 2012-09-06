@@ -63,8 +63,8 @@ huffman_build_tree(void **values, int count)
 		nodes[tree1] = malloc (sizeof (struct huffman_node));
 		nodes[tree1]->weight = tmp->weight + nodes[tree2]->weight;
 		nodes[tree1]->value = NULL;
-		nodes[tree1]->left = nodes[tree2];
-		nodes[tree1]->right = tmp;
+		nodes[tree1]->left = tmp;
+		nodes[tree1]->right = nodes[tree2];
 
 		nodes[tree2]->weight = -1;
 	}

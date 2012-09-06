@@ -75,8 +75,8 @@ class NodeQueue
   end
 
   def merge_nodes(node1, node2)
-    right = node1
-    left = node2
+    left = node1
+    right = node2
     node = HuffNode.new(:weight => left.weight + right.weight, :left => left, :right => right)
     left.parent = right.parent = node
     node
