@@ -7,28 +7,34 @@
 static int
 find_smallest (struct huffman_node **nodes, int count, int different)
 {
-	int smallest;
+	// 'real' weights will always be positive.
+	int smallest = -1;
 	int i;
 
-	for (i = 0; nodes[i]->weight == -1; i++);
-
-	if (i == different) {
-		for (i++; nodes[i]->weight == -1; i++);
-	}
-	smallest = i;
-
-	for (i = smallest + 1; i < count; i++) {
-		if (i == different || nodes[i]->weight == -1) {
+	for (i = 0; i < count; i++) {
+		if (i == different) {
 			continue;
 		}
 
-		if (nodes[i]->weight < nodes[smallest]->weight) {
+		if (smallest == -1 ||
+		    nodes[i]->weight < nodes[smallest]->weight) {
 			smallest = i;
 		}
 	}
 
 	return smallest;
 }
+
+static void
+shift_nodes (struct huffman_node **nodes, int count, int start)
+{
+	int i;
+	for (i = start; i + 1 < count; i++) {
+		nodes[i] = nodes[i + 1];
+	}
+	nodes[i] = NULL;
+}
+
 
 struct huffman_node *
 huffman_build_tree(void **values, int count)
@@ -52,24 +58,30 @@ huffman_build_tree(void **values, int count)
 
 	int tree1;
 	int tree2;
-	for (i = 1; i < count; i++) {
+	for (; count > 1; count--) {
 		struct huffman_node *tmp;
 
 		tree1 = find_smallest (nodes, count, -1);
 		tree2 = find_smallest (nodes, count, tree1);
 
-		tmp = nodes[tree1];
+		tmp = malloc (sizeof (struct huffman_node));
+		tmp->weight = nodes[tree1]->weight + nodes[tree2]->weight;
+		tmp->value = NULL;
+		tmp->left = nodes[tree1];
+		tmp->right = nodes[tree2];
 
-		nodes[tree1] = malloc (sizeof (struct huffman_node));
-		nodes[tree1]->weight = tmp->weight + nodes[tree2]->weight;
-		nodes[tree1]->value = NULL;
-		nodes[tree1]->left = tmp;
-		nodes[tree1]->right = nodes[tree2];
+		if (tree1 > tree2) {
+			shift_nodes (nodes, count, tree1);
+			shift_nodes (nodes, count, tree2);
+		} else {
+			shift_nodes (nodes, count, tree2);
+			shift_nodes (nodes, count, tree1);
+		}
 
-		nodes[tree2]->weight = -1;
+		nodes[count - 2] = tmp;
 	}
 
-	return nodes[tree1];
+	return nodes[0];
 }
 
 void *

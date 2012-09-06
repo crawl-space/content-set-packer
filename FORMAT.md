@@ -79,5 +79,7 @@ different valid huffman trees, depending on the algorithm used. Thus it is
 important to use an algorithm that will give the same ordering. See the code
 for more details, but in a nuttshell:
 
+Order the list of nodes by weight (lightest to heaviest). Take the first two lightest nodes off the list, and set them as children of a new parent node. add this parent node to the end of the node list, after removing the child nodes from the list.
+
 When comparing nodes, the node that weighs the least becomes the left child. If
 weight is tied, the node that was examined longest ago becomes the left child.

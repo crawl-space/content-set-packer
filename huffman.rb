@@ -68,8 +68,15 @@ class NodeQueue
       node1 = self.find_smallest(-1)
       node2 = self.find_smallest(node1)
       new = merge_nodes(@nodes[node1], @nodes[node2])
-      @nodes[node1] = new
-      @nodes.delete_at(node2)
+      if node1 > node2
+        @nodes.delete_at(node1)
+        @nodes.delete_at(node2)
+      else
+        @nodes.delete_at(node2)
+        @nodes.delete_at(node1)
+      end
+
+      @nodes << new
     end
     @huffman_root = @nodes.first
   end
