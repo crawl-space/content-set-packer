@@ -154,6 +154,7 @@ load_content_sets(FILE *stream, struct node **list, int *node_count,
 	}
 
 	read = fread (buf, sizeof (char), CHUNK, stream);
+	unsigned char *eob = buf + read;
 	if (stats) {
 		printf("\tbytes: %zu\n", read);
 	}
@@ -191,6 +192,10 @@ load_content_sets(FILE *stream, struct node **list, int *node_count,
 							      raw);
 			buf = buf + bits_read / 8;
 			bits_read = bits_read % 8;
+			if (buf >= eob) {
+				printf ("\nread too much: dictionary lookup\n");
+				return -1;
+			}
 
 			if (path[0] == '\0') {
 				if (raw) {
@@ -213,6 +218,10 @@ load_content_sets(FILE *stream, struct node **list, int *node_count,
 
 			buf = buf + bits_read / 8;
 			bits_read = bits_read % 8;
+			if (buf >= eob) {
+				printf ("\nread too much: path lookup\n");
+				return -1;
+			}
 		
 			node->paths[node->count] = path;
 			node->children[node->count] = child;
