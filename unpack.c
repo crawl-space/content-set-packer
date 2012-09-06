@@ -129,9 +129,9 @@ load_dictionary(FILE *source, char ***dictionary, int *dictionary_size,
 }
 
 static int
-load_content_sets(FILE *stream, struct node **list,
-		  struct huffman_node *dictionary_tree, bool stats) {
-
+load_content_sets(FILE *stream, struct node **list, int *node_count,
+		  struct huffman_node *dictionary_tree, bool stats, bool raw)
+{
 	unsigned char *buf = malloc (sizeof (char *) * CHUNK);
 	size_t read;
 	struct node **nodes;
@@ -141,8 +141,10 @@ load_content_sets(FILE *stream, struct node **list,
 	fread(&count, sizeof (unsigned char), 1, stream);
 
 	if (stats) {
-		printf("node stats:\n");
-		printf("\tnumber of nodes: %hd\n", count);
+		printf ("node stats:\n");
+		printf ("\tnumber of nodes: %hd\n", count);
+	} else if (raw) {
+		printf ("Nodes (%d entries):\n", count);
 	}
 
 
@@ -173,19 +175,40 @@ load_content_sets(FILE *stream, struct node **list,
 		node->paths = malloc (sizeof (char *) * 64);
 		node->children = malloc (sizeof (struct node *) * 64);
 
+		if (raw) {
+			printf ("\tNode:\n");
+		}
+
 		while (true) {
+			if (raw) {
+				printf("\t\t");
+			}
+
 			char *path = (char *) huffman_lookup (dictionary_tree,
-							      buf, &bits_read);
+							      buf, &bits_read,
+							      raw);
 			buf = buf + bits_read / 8;
 			bits_read = bits_read % 8;
 
 			if (path[0] == '\0') {
+				if (raw) {
+					printf("\n");
+				}
 				break;
+			}
+
+			if (raw) {
+				printf (" :: ");
 			}
 
 			struct node *child =
 				(struct node *) huffman_lookup (tree, buf,
-								&bits_read);
+								&bits_read,
+								raw);
+			if (raw) {
+				printf ("\n");
+			}
+
 			buf = buf + bits_read / 8;
 			bits_read = bits_read % 8;
 		
@@ -330,14 +353,46 @@ check_content_set (struct node *content_sets, const char *path)
 	}
 }
 
+static void
+print_dictionary (char **dictionary, int dictionary_size)
+{
+	int i;
+	printf ("Path Dictionary (%d entries):\n", dictionary_size);
+	for (i = 0; i < dictionary_size; i++) {
+		printf ("\t%s\n", dictionary[i]);
+	}
+}
+
+static void
+print_node (struct node *content_set)
+{
+	int i;
+	printf ("\tNode:\n");
+	for (i = 0; i < content_set->count; i++) {
+		printf ("\t\t%s\n", content_set->paths[i]);
+	}
+}
+
+static void
+print_nodes (struct node **content_sets, int content_set_size)
+{
+	int i;
+	printf ("Node Dictionary (%d entries):\n", content_set_size);
+	for (i = 0; i < content_set_size; i++) {
+		print_node (content_sets[i]);
+	}
+}
+
 int
 main(int argc, char **argv) {
 	FILE *fp;
 	char **dictionary;
 	int dictionary_size;
 	struct node *content_sets;
+	int content_set_size;
 
 	bool stats = false;
+	bool raw = false;
 	bool dump = false;
 	bool check = false;
 
@@ -345,6 +400,7 @@ main(int argc, char **argv) {
 		printf("usage: unpack [mode] [bin file]\n");
 		printf("mode is one of:\n");
 		printf("s - print stats for the binary content set blob\n");
+		printf("r - display the raw binary as text\n");
 		printf("d - dump the blob contents to stdout\n");
 		printf("c - check if a path is allowed by the blob\n");
 		printf("\n");
@@ -360,6 +416,9 @@ main(int argc, char **argv) {
 			break;
 		case 'd':
 			dump = true;
+			break;
+		case 'r':
+			raw = true;
 			break;
 		case 'c':
 			check = true;
@@ -385,7 +444,12 @@ main(int argc, char **argv) {
 	struct huffman_node *dictionary_tree =
 		huffman_build_tree ((void **) dictionary, dictionary_size);
 
-	if (load_content_sets(fp, &content_sets, dictionary_tree, stats)) {
+	if (raw) {
+		print_dictionary (dictionary, dictionary_size);
+	}
+
+	if (load_content_sets(fp, &content_sets, &content_set_size,
+			      dictionary_tree, stats, raw)) {
 		printf("node list parsing failed. exiting\n");
 		return -1;
 	}

@@ -73,7 +73,8 @@ huffman_build_tree(void **values, int count)
 }
 
 void *
-huffman_lookup (struct huffman_node *tree, unsigned char *bits, int *bits_read)
+huffman_lookup (struct huffman_node *tree, unsigned char *bits, int *bits_read,
+		bool print)
 {
 
 	struct huffman_node *node = tree;
@@ -88,8 +89,14 @@ huffman_lookup (struct huffman_node *tree, unsigned char *bits, int *bits_read)
 
 		if ((bits[0] << *bits_read % 8 & 0x80) == 0) {
 			node = node->left;
+			if (print) {
+				putchar ('0');
+			}
 		} else {
 			node = node->right;
+			if (print) {
+				putchar ('1');
+			}
 		}
 
 		(*bits_read)++;
