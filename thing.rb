@@ -385,7 +385,31 @@ if $0 == __FILE__
       # size.
 
       node_count = node_list.count + 1
-      file.write([node_count].pack("c"))
+      if node_count < 128
+        file.write([node_count].pack("C"))
+      else
+        bits = Math.log(node_count, 2).ceil
+        bytes = (bits / 8).ceil
+        file.write([128 + bytes].pack("C"))
+
+        # get the correct integer directive for pack()
+        case bytes
+        when 1
+          # 8-bit unsigned
+          directive = "C"
+        when 2
+          # 16-bit unsigned big-endian
+          directive = "n"
+        when 3..4
+          # 32-bit unsigned big-endian
+          directive = "N"
+        else
+          # Give up. This is an impractical number of nodes.
+          puts("Too many nodes.")
+          exit(false)
+        end
+        file.write([node_count].pack(directive))
+      end
 
       bit_file = BitWriter.new file
       binary_write(bit_file, [parent] + node_list, string_huff, node_huff)
