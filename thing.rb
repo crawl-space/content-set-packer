@@ -390,6 +390,10 @@ if $0 == __FILE__
       else
         bits = Math.log(node_count, 2).ceil
         bytes = (bits / 8).ceil
+        if bytes == 3
+          # must write this as a 32-bit int
+          bytes = 4
+        end
         file.write([128 + bytes].pack("C"))
 
         # get the correct integer directive for pack()
@@ -400,7 +404,7 @@ if $0 == __FILE__
         when 2
           # 16-bit unsigned big-endian
           directive = "n"
-        when 3..4
+        when 4
           # 32-bit unsigned big-endian
           directive = "N"
         else
