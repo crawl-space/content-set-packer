@@ -389,7 +389,7 @@ if $0 == __FILE__
         file.write([node_count].pack("C"))
       else
         bits = Math.log(node_count, 2).ceil
-        bytes = (bits / 8).ceil
+        bytes = (bits / 8.0).ceil
         if bytes == 3
           # must write this as a 32-bit int
           bytes = 4
