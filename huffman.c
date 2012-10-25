@@ -1,11 +1,10 @@
 #include "huffman.h"
 
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-static int
-find_smallest (struct huffman_node **nodes, int count, int different)
+static uint64_t
+find_smallest (struct huffman_node **nodes, uint64_t count, int different)
 {
 	// 'real' weights will always be positive.
 	int smallest = -1;
@@ -26,9 +25,9 @@ find_smallest (struct huffman_node **nodes, int count, int different)
 }
 
 static void
-shift_nodes (struct huffman_node **nodes, int count, int start)
+shift_nodes (struct huffman_node **nodes, uint64_t count, uint64_t start)
 {
-	int i;
+	uint64_t i;
 	for (i = start; i + 1 < count; i++) {
 		nodes[i] = nodes[i + 1];
 	}
@@ -37,7 +36,7 @@ shift_nodes (struct huffman_node **nodes, int count, int start)
 
 
 struct huffman_node *
-huffman_build_tree(void **values, int count)
+huffman_build_tree(void **values, uint64_t count)
 {
 	int i;
 	struct huffman_node **nodes;

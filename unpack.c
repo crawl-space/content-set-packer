@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
 #include <zlib.h>
@@ -140,16 +141,37 @@ load_content_sets(FILE *stream, struct node **list, int *node_count,
 	unsigned char count;
 	fread(&count, sizeof (unsigned char), 1, stream);
 
+	uint64_t big_count;
+
+	if (count & 0x80) {
+		unsigned short count_bytes = count & 0x7F;
+		unsigned char *size_buf = malloc (sizeof (char *) *
+						  count_bytes);
+		fread (size_buf, sizeof (char), count_bytes, stream);
+
+		printf ("found count: %hd\n", count_bytes);
+		printf ("%hd\n", (unsigned short) size_buf[0]);
+		printf ("%hd\n", size_buf[1]);
+
+		big_count = 0;
+		int offset = sizeof (uint64_t ) - count_bytes;
+
+		memcpy (((void *) &big_count) + offset, size_buf, count_bytes);
+		big_count = be64toh (big_count);
+	} else {
+		big_count = count;
+	}
+		
 	if (stats) {
 		printf ("node stats:\n");
-		printf ("\tnumber of nodes: %hd\n", count);
+		printf ("\tnumber of nodes: %lu\n", big_count);
 	} else if (raw) {
-		printf ("Nodes (%d entries):\n", count);
+		printf ("Nodes (%lu entries):\n", big_count);
 	}
 
 
-	nodes = malloc (sizeof (struct node *) * (unsigned short) count);
-	for (i = 0; i < (unsigned short) count; i++) {
+	nodes = malloc (sizeof (struct node *) * big_count);
+	for (i = 0; i < big_count; i++) {
 		nodes[i] = malloc (sizeof (struct node));
 	}
 
@@ -165,10 +187,10 @@ load_content_sets(FILE *stream, struct node **list, int *node_count,
 	 */
 	struct huffman_node *tree =
 		huffman_build_tree ((void **) nodes + 1,
-				    (unsigned short) count - 1);
+				    big_count - 1);
 
 	int bits_read = 0;
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < big_count; i++) {
 		struct node *node = nodes[i];
 		node->count = 0;
 
